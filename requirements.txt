@@ -1,9 +1,6 @@
 streamlit
-numpy
-pandas
-scikit-learn
-Pillow
-opencv-python
 tensorflow
-gdown
-tqdm
+numpy
+Pillow
+qdrant-client
+python-dotenv
