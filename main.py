@@ -1,21 +1,27 @@
-# Local-only version (not for deployment)
-
 import streamlit as st
-import os
-from PIL import Image
-import numpy as np
-import pickle
 import tensorflow as tf
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.layers import GlobalMaxPooling2D
 from tensorflow.keras.applications.resnet50 import ResNet50, preprocess_input
-from sklearn.neighbors import NearestNeighbors
+import numpy as np
 from numpy.linalg import norm
+from PIL import Image
+import pickle
+from qdrant_client import QdrantClient
+import os
 
-# Load local files (DO NOT COMMIT PKL FILES)
-feature_list = np.array(pickle.load(open("embeddings.pkl", "rb")))
+# ----------------- QDRANT -----------------
+client = QdrantClient(
+    url=os.environ["QDRANT_URL"],
+    api_key=os.environ["QDRANT_API_KEY"]
+)
+
+COLLECTION_NAME = "fashion_embeddings"
+
+# ----------------- LOAD FILES -----------------
 filenames = pickle.load(open("filenames.pkl", "rb"))
 
+# ----------------- MODEL -----------------
 base_model = ResNet50(weights="imagenet", include_top=False, input_shape=(224,224,3))
 base_model.trainable = False
 
@@ -24,28 +30,32 @@ model = tf.keras.Sequential([
     GlobalMaxPooling2D()
 ])
 
-def extract_features(img, model):
+# ----------------- FEATURE EXTRACTION -----------------
+def extract_features(img):
     img = img.resize((224,224))
-    img_array = image.img_to_array(img)
-    expanded = np.expand_dims(img_array, axis=0)
-    processed = preprocess_input(expanded)
-    result = model.predict(processed, verbose=0).flatten()
-    return result / norm(result)
+    arr = image.img_to_array(img)
+    arr = np.expand_dims(arr, axis=0)
+    arr = preprocess_input(arr)
+    feat = model.predict(arr).flatten()
+    return feat / norm(feat)
 
-st.title("Fashion Recommender (Local)")
+# ----------------- UI -----------------
+st.title("Fashion Recommendation (Local)")
 
-uploaded_file = st.file_uploader("Upload image")
+uploaded_file = st.file_uploader("Upload Image")
 
 if uploaded_file:
     img = Image.open(uploaded_file)
     st.image(img)
 
-    query = extract_features(img, model)
+    query = extract_features(img)
 
-    nn = NearestNeighbors(n_neighbors=5, algorithm="brute", metric="euclidean")
-    nn.fit(feature_list)
+    hits = client.search(
+        collection_name=COLLECTION_NAME,
+        query_vector=query.tolist(),
+        limit=5
+    )
 
-    _, indices = nn.kneighbors([query])
-
-    for idx in indices[0]:
-        st.image(filenames[idx], width=150)
+    st.subheader("Recommendations")
+    for hit in hits:
+        st.image(filenames[hit.id])
