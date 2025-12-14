@@ -1,6 +1,5 @@
 streamlit
 tensorflow
 numpy
-Pillow
+pillow
 qdrant-client
-python-dotenv
