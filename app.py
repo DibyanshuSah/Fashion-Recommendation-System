@@ -8,6 +8,7 @@ from numpy.linalg import norm
 from PIL import Image
 import pickle
 import os
+import gdown
 from qdrant_client import QdrantClient
 
 # ----------------- CHECK ENV VARIABLES -----------------
@@ -23,9 +24,14 @@ client = QdrantClient(
 
 COLLECTION_NAME = "fashion_embeddings"
 
-# ----------------- LOAD FILENAMES ONLY -----------------
+# ----------------- DOWNLOAD filenames.pkl -----------------
+FILENAMES_URL = "https://drive.google.com/uc?id=1OKX-1ys4jqznVgX1e3cL1oOdLv0asaUY"
+
 @st.cache_resource
 def load_filenames():
+    # Download if not exists
+    if not os.path.exists("filenames.pkl"):
+        gdown.download(FILENAMES_URL, "filenames.pkl", quiet=False)
     with open("filenames.pkl", "rb") as f:
         return pickle.load(f)
 
@@ -34,15 +40,15 @@ filenames = load_filenames()
 # ----------------- MODEL -----------------
 @st.cache_resource
 def load_model():
-    base_model = ResNet50(
+    base = ResNet50(
         weights="imagenet",
         include_top=False,
         input_shape=(224, 224, 3)
     )
-    base_model.trainable = False
+    base.trainable = False
 
     return tf.keras.Sequential([
-        base_model,
+        base,
         GlobalMaxPooling2D()
     ])
 
@@ -80,7 +86,6 @@ if uploaded_file:
 
     st.subheader("✨ Recommended Items")
     cols = st.columns(5)
-
     for col, hit in zip(cols, results):
         with col:
             st.image(filenames[hit.id], use_column_width=True)
