@@ -1,5 +1,7 @@
 import streamlit as st
 import os
+os.makedirs("uploads", exist_ok=True)
+
 from PIL import Image
 import numpy as np
 import pickle
