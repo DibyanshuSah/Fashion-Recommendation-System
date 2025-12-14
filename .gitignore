@@ -1,3 +1,5 @@
-images
 embeddings.pkl
 filenames.pkl
+uploads/
+.env
+__pycache__/
