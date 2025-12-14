@@ -1,42 +1,66 @@
-import tensorflow
+import streamlit as st
+import tensorflow as tf
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.layers import GlobalMaxPooling2D
-from tensorflow.keras.applications.resnet50 import ResNet50,preprocess_input
+from tensorflow.keras.applications.resnet50 import ResNet50, preprocess_input
 import numpy as np
 from numpy.linalg import norm
-import os
-from tqdm import tqdm
 import pickle
+import os
+import gdown
+from sklearn.neighbors import NearestNeighbors
+from PIL import Image
 
-model = ResNet50(weights='imagenet',include_top=False,input_shape=(224,224,3))
-model.trainable = False
+# ----------------- DOWNLOAD FROM DRIVE -----------------
+EMB_URL = "https://drive.google.com/uc?id=1lL-OIgrVNG7e2tDKT817bDGtDgYvIJC3"
+FIL_URL = "https://drive.google.com/uc?id=1OKX-1ys4jqznVgX1e3cL1oOdLv0asaUY"
 
-model = tensorflow.keras.Sequential([
-    model,
+def download_if_needed():
+    if not os.path.exists("embeddings.pkl"):
+        gdown.download(EMB_URL, "embeddings.pkl", quiet=False)
+    if not os.path.exists("filenames.pkl"):
+        gdown.download(FIL_URL, "filenames.pkl", quiet=False)
+
+download_if_needed()
+
+# ----------------- LOAD DATA -----------------
+feature_list = pickle.load(open("embeddings.pkl", "rb"))
+filenames = pickle.load(open("filenames.pkl", "rb"))
+
+# ----------------- MODEL -----------------
+base_model = ResNet50(weights="imagenet", include_top=False, input_shape=(224,224,3))
+base_model.trainable = False
+
+model = tf.keras.Sequential([
+    base_model,
     GlobalMaxPooling2D()
 ])
 
-#print(model.summary())
-
-def extract_features(img_path,model):
-    img = image.load_img(img_path,target_size=(224,224))
+# ----------------- FEATURE EXTRACT -----------------
+def extract_features(img, model):
+    img = img.resize((224,224))
     img_array = image.img_to_array(img)
-    expanded_img_array = np.expand_dims(img_array, axis=0)
-    preprocessed_img = preprocess_input(expanded_img_array)
-    result = model.predict(preprocessed_img).flatten()
-    normalized_result = result / norm(result)
+    expanded = np.expand_dims(img_array, axis=0)
+    processed = preprocess_input(expanded)
+    result = model.predict(processed, verbose=0).flatten()
+    return result / norm(result)
 
-    return normalized_result
+# ----------------- UI -----------------
+st.title("Fashion Recommendation System")
 
-filenames = []
+uploaded_file = st.file_uploader("Upload an image", type=["jpg","png","jpeg","webp"])
 
-for file in os.listdir('images'):
-    filenames.append(os.path.join('images',file))
+if uploaded_file is not None:
+    img = Image.open(uploaded_file)
+    st.image(img, caption="Uploaded Image", use_column_width=True)
 
-feature_list = []
+    query = extract_features(img, model)
 
-for file in tqdm(filenames):
-    feature_list.append(extract_features(file,model))
+    neighbors = NearestNeighbors(n_neighbors=5, algorithm="brute", metric="euclidean")
+    neighbors.fit(feature_list)
 
-pickle.dump(feature_list,open('embeddings.pkl','wb'))
-pickle.dump(filenames,open('filenames.pkl','wb'))
+    distances, indices = neighbors.kneighbors([query])
+
+    st.subheader("Recommended Items")
+    for idx in indices[0]:
+        st.image(filenames[idx], use_column_width=True)
