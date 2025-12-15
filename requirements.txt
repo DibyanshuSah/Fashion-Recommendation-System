@@ -1,6 +1,6 @@
 streamlit
-tensorflow
+tensorflow-cpu
 numpy
 pillow
 scikit-learn
-qdrant-client
+gdown
