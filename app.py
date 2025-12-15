@@ -1,87 +1,90 @@
-import os
 import streamlit as st
 import numpy as np
+import pickle
+import os
+import gdown
 from PIL import Image
 from numpy.linalg import norm
+
 import tensorflow as tf
+from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+from tensorflow.keras.layers import GlobalAveragePooling2D
 from tensorflow.keras.preprocessing import image
-from tensorflow.keras.layers import GlobalMaxPooling2D
-from tensorflow.keras.applications.resnet50 import ResNet50, preprocess_input
-from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchValue
+from sklearn.neighbors import NearestNeighbors
 
 # ---------------- CONFIG ----------------
-COLLECTION_NAME = "fashion_embeddings"
-VECTOR_SIZE = 2048
+EMB_URL = "https://drive.google.com/uc?id=1lL-OIgrVNG7e2tDKT817bDGtDgYvIJC3"
+FIL_URL = "https://drive.google.com/uc?id=1OKX-1ys4jqznVgX1e3cL1oOdLv0asaUY"
 
-QDRANT_URL = os.getenv("QDRANT_URL")
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+# ---------------- DOWNLOAD FILES ----------------
+@st.cache_resource
+def download_files():
+    if not os.path.exists("embeddings.pkl"):
+        gdown.download(EMB_URL, "embeddings.pkl", quiet=False)
+    if not os.path.exists("filenames.pkl"):
+        gdown.download(FIL_URL, "filenames.pkl", quiet=False)
 
-if not QDRANT_URL or not QDRANT_API_KEY:
-    st.error("❌ Qdrant credentials not set in environment variables")
-    st.stop()
+download_files()
 
-# ---------------- QDRANT CLIENT ----------------
-client = QdrantClient(
-    url=QDRANT_URL,
-    api_key=QDRANT_API_KEY,
-    timeout=30
-)
+# ---------------- LOAD DATA ----------------
+@st.cache_resource
+def load_data():
+    with open("embeddings.pkl", "rb") as f:
+        embeddings = pickle.load(f)
+    with open("filenames.pkl", "rb") as f:
+        filenames = pickle.load(f)
+    return embeddings, filenames
 
-# ---------------- MODEL (CACHED) ----------------
+feature_list, filenames = load_data()
+
+# ---------------- MODEL ----------------
 @st.cache_resource
 def load_model():
-    base_model = ResNet50(
+    base = MobileNetV2(
         weights="imagenet",
         include_top=False,
         input_shape=(224, 224, 3)
     )
-    base_model.trainable = False
-    return tf.keras.Sequential([
-        base_model,
-        GlobalMaxPooling2D()
+    base.trainable = False
+    model = tf.keras.Sequential([
+        base,
+        GlobalAveragePooling2D()
     ])
+    return model
 
 model = load_model()
 
-# ---------------- FEATURE EXTRACTION ----------------
-def extract_features(img: Image.Image):
-    img = img.convert("RGB")           # 🔥 FIX: RGBA → RGB
+# ---------------- FEATURE EXTRACT ----------------
+def extract_features(img):
+    img = img.convert("RGB")        # 🔥 RGBA FIX
     img = img.resize((224, 224))
-
-    img_array = image.img_to_array(img)
-    img_array = np.expand_dims(img_array, axis=0)
-    img_array = preprocess_input(img_array)
-
-    features = model.predict(img_array, verbose=0).flatten()
+    arr = image.img_to_array(img)
+    arr = np.expand_dims(arr, axis=0)
+    arr = preprocess_input(arr)
+    features = model.predict(arr, verbose=0).flatten()
     return features / norm(features)
 
 # ---------------- UI ----------------
-st.set_page_config(page_title="Fashion Recommendation", layout="wide")
 st.title("👕 Fashion Recommendation System")
 
-uploaded_file = st.file_uploader(
+uploaded = st.file_uploader(
     "Upload a fashion image",
     type=["jpg", "jpeg", "png", "webp"]
 )
 
-if uploaded_file:
-    img = Image.open(uploaded_file)
-    st.image(img, caption="Uploaded Image", width=300)
+if uploaded:
+    img = Image.open(uploaded)
+    st.image(img, width=300)
 
-    with st.spinner("🔍 Finding similar outfits..."):
-        query_vector = extract_features(img)
+    with st.spinner("Finding similar outfits..."):
+        query = extract_features(img)
 
-        search_result = client.search(
-            collection_name=COLLECTION_NAME,
-            query_vector=query_vector.tolist(),
-            limit=5
-        )
+        nn = NearestNeighbors(n_neighbors=5, metric="euclidean")
+        nn.fit(feature_list)
+        _, indices = nn.kneighbors([query])
 
     st.subheader("Recommended Items")
-
     cols = st.columns(5)
-    for col, point in zip(cols, search_result):
-        image_url = point.payload.get("filename")
-        if image_url:
-            col.image(image_url, use_container_width=True)
+    for col, idx in zip(cols, indices[0]):
+        col.image(filenames[idx], width=150)
