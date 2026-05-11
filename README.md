@@ -58,7 +58,3 @@ python app.py
 - ML deployment on Hugging Face Spaces  
 
 ---
-
-## ⭐ If you like this project
-
-Give it a star ⭐ on GitHub!
