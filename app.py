@@ -7,21 +7,13 @@ import tensorflow as tf
 from tensorflow.keras.applications.resnet50 import ResNet50, preprocess_input
 from tensorflow.keras.preprocessing import image
 
-# -----------------------------
-# ENV FIX
-# -----------------------------
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 tf.get_logger().setLevel('ERROR')
 
-# -----------------------------
-# IMAGE FOLDER
-# -----------------------------
 IMAGE_DIR = "images"
 image_files = os.listdir(IMAGE_DIR)
 
-# -----------------------------
-# LOAD MODEL
-# -----------------------------
+#model loading 
 model = ResNet50(
     weights="imagenet",
     include_top=False,
@@ -30,9 +22,7 @@ model = ResNet50(
 )
 model.trainable = False
 
-# -----------------------------
-# FEATURE EXTRACTOR
-# -----------------------------
+#feature extraction 
 def extract_features(img):
     img = img.convert("RGB")
     img = img.resize((224, 224))
@@ -44,9 +34,7 @@ def extract_features(img):
     features = model.predict(img_array, verbose=0).flatten()
     return features / norm(features)
 
-# -----------------------------
-# RECOMMENDATION LOGIC
-# -----------------------------
+#logic
 def recommend(uploaded_img):
     if uploaded_img is None:
         return []
@@ -69,14 +57,12 @@ def recommend(uploaded_img):
     similarities.sort(reverse=True)
 
     results = []
-    for i in range(min(3, len(similarities))):  # 🔥 3 results only
+    for i in range(min(3, len(similarities))): 
         results.append(Image.open(similarities[i][1]))
 
     return results
 
-# -----------------------------
-# UI
-# -----------------------------
+#streamlit ui
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
     gr.Markdown("## 👕 Fashion Recommender")
     gr.Markdown("Upload a fashion image and get similar product recommendations")
@@ -87,16 +73,14 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
             label="Recommended Items",
             columns=3,
             rows=1,
-            height="auto",        # 🔥 no scroll
-            object_fit="cover",   # 🔥 clean fit
-            preview=True          # 🔥 click zoom
+            height="auto",        
+            object_fit="cover",  
+            preview=True      
         )
-
     with gr.Row():
         submit = gr.Button("Submit", variant="primary")
         clear = gr.Button("Clear")
 
     submit.click(fn=recommend, inputs=input_img, outputs=output_imgs)
     clear.click(lambda: (None, []), outputs=[input_img, output_imgs])
-
 demo.launch()
